@@ -1,0 +1,142 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Kullanıcı modeli - giriş yapan kullanıcılar
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  name          String?
+  password      String         // Hash'lenmiş şifre
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  // Streak bilgisi
+  currentStreak Int            @default(0)
+  longestStreak Int            @default(0)
+  lastReadDate  DateTime?
+  
+  // İlişkiler
+  userBooks     UserBook[]     // Kullanıcının kitapları
+  readingSessions ReadingSession[]
+  notes         Note[]
+  streaks       Streak[]
+  favoriteAuthors Author[]     @relation("UserFavoriteAuthors")
+}
+
+// Yazar modeli
+model Author {
+  id          String   @id @default(cuid())
+  name        String
+  bio         String?
+  createdAt   DateTime @default(now())
+  
+  // İlişkiler
+  books       Book[]
+  favoritedBy User[]   @relation("UserFavoriteAuthors")
+}
+
+// Kitap modeli
+model Book {
+  id          String     @id @default(cuid())
+  title       String
+  authorId    String
+  totalPages  Int
+  coverUrl    String?
+  description String?
+  isbn        String?    @unique
+  createdAt   DateTime   @default(now())
+  
+  // İlişkiler
+  author      Author     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  userBooks   UserBook[]
+}
+
+// Kullanıcı-Kitap ilişkisi (okuma durumu, rating, favori)
+model UserBook {
+  id            String   @id @default(cuid())
+  userId        String
+  bookId        String
+  
+  // Okuma durumu
+  status        String   @default("not_started") // not_started, reading, completed
+  currentPage   Int      @default(0)
+  isFavorite    Boolean  @default(false)
+  
+  // Rating
+  rating        Int?     // 1-5 arası
+  
+  // Tarihler
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // İlişkiler
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book          Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  readingSessions ReadingSession[]
+  notes         Note[]
+  
+  @@unique([userId, bookId]) // Bir kullanıcı bir kitabı sadece bir kere ekleyebilir
+}
+
+// Okuma seansları - timer ile takip
+model ReadingSession {
+  id          String    @id @default(cuid())
+  userId      String
+  userBookId  String
+  
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?      // Dakika cinsinden
+  pagesRead   Int       @default(0)
+  
+  // İlişkiler
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook    UserBook  @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, startTime])
+}
+
+// Notlar - sayfa bazlı
+model Note {
+  id          String   @id @default(cuid())
+  userId      String
+  userBookId  String
+  
+  pageNumber  Int
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // İlişkiler
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userBook    UserBook @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  
+  @@index([userBookId, pageNumber])
+}
+
+// Streak takibi - günlük okuma kayıtları
+model Streak {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime @db.Date // Sadece tarih (saat bilgisi yok)
+  
+  // İlişkiler
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, date]) // Bir kullanıcı günde bir kere işaretlenir
+  @@index([userId, date])
+}
